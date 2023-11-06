@@ -17,15 +17,27 @@ struct Cli {
 
 #[derive(Subcommand, Debug)]
 enum Command {
+    /// Initialize a C++ project in the current directory
+    /// with the name of the current directory.
     Init,
+
+    /// Create a C++ project in a new directory
+    /// called `name`.
     New {
+        /// This is the name of the new C++ project.
         name: String,
     },
+
+    /// Build and Run C++ project according to chp.toml.
     Run {
+        /// The release flag enables the release profile (uses debug profile by default).
         #[arg(long)]
         release: bool,
     },
+
+    /// Build C++ project according to chp.toml.
     Build {
+        /// The release flag enables the release profile (uses debug profile by default).
         #[arg(long)]
         release: bool,
     },
