@@ -141,7 +141,7 @@ fn init_project(maybe_name: Option<String>) -> Result<()> {
 
     println!("{:?}", &current_dir);
     if let Ok(mut read) = current_dir.read_dir() {
-        if read.next().is_none() {
+        if read.next().is_some() {
             return Err(Report::msg(format!(
                 "Project folder is not empty: {current_dir:?}"
             )));
