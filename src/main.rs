@@ -162,6 +162,16 @@ fn write_project(mut path: PathBuf) -> Result<()> {
         .expect("Should be able to convert &OsStr to &str")
         .to_owned();
 
+    let output = TerminalCommand::new("git")
+        .current_dir(&path)
+        .arg("init")
+        .output()?;
+
+    if !output.stderr.is_empty() {
+        std::io::stderr().write_all(&output.stderr)?;
+        return Err(Report::msg("Could not initialize git"));
+    }
+
     // Create chp configuration TOML file.
     path.push("chp.toml");
     {
