@@ -163,8 +163,8 @@ fn write_project(mut path: PathBuf) -> Result<()> {
         .to_owned();
 
     let output = TerminalCommand::new("git")
-        .current_dir(&path)
         .arg("init")
+        .current_dir(&path)
         .output()?;
 
     if !output.stderr.is_empty() {
