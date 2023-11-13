@@ -35,6 +35,10 @@ enum Command {
         /// The release flag enables the release profile (uses debug profile by default).
         #[arg(long)]
         release: bool,
+
+        /// Any argument passed after this flag is passed to your program.
+        #[arg(value_parser, short, num_args = 1.., value_delimiter = ' ')]
+        args: Vec<String>,
     },
 
     /// Build C++ project according to chp.toml.
@@ -53,8 +57,8 @@ fn main() -> Result<()> {
     match cli.command {
         Command::Init => init_project(None),
         Command::New { name } => init_project(Some(name)),
-        Command::Run { release } => build(release, true),
-        Command::Build { release } => build(release, false),
+        Command::Run { release, args } => run(release, args),
+        Command::Build { release } => build(release),
     }
 }
 
@@ -128,7 +132,7 @@ fn find_cpp_files_helper(cpp_files: &mut Vec<PathBuf>, dir: &Path, root: &Path) 
     Ok(())
 }
 
-fn build(release: bool, maybe_run: bool) -> Result<()> {
+fn build(release: bool) -> Result<()> {
     let current_dir = current_dir()?;
     let config = find_config()?;
     let args = if release {
@@ -137,15 +141,11 @@ fn build(release: bool, maybe_run: bool) -> Result<()> {
         config.profiles.debug
     };
 
-    if maybe_run {
-        println!("Running {:?}", &current_dir);
-    } else {
-        println!("Building {:?}", &current_dir);
-    }
+    println!("Building {:?}", &current_dir);
 
     let output = TerminalCommand::new(config.command)
-        .args(args)
         .args(find_cpp_files()?)
+        .args(args)
         .output()?;
 
     if !output.stderr.is_empty() {
@@ -153,17 +153,14 @@ fn build(release: bool, maybe_run: bool) -> Result<()> {
         return Ok(());
     }
 
-    if maybe_run {
-        run(release)?;
-    }
     Ok(())
 }
 
-fn run(release: bool) -> Result<()> {
+fn run(release: bool, args: Vec<String>) -> Result<()> {
+    build(release)?;
+
     let mut current_dir = current_dir()?;
     let config = find_config()?;
-
-    let args = std::env::args().skip_while(|arg| arg != "--");
 
     current_dir.push("build");
     if release {
@@ -172,6 +169,8 @@ fn run(release: bool) -> Result<()> {
         current_dir.push("debug");
     }
     current_dir.push(format!("{}.exe", config.name));
+
+    println!("Running {:?}", &current_dir);
 
     let output = TerminalCommand::new(current_dir).args(args).output()?;
 
