@@ -1,5 +1,7 @@
-use std::fs::{create_dir_all, read_to_string, OpenOptions};
+use std::ffi::OsStr;
+use std::fs::{create_dir_all, read_dir, read_to_string, OpenOptions};
 use std::io::Write;
+use std::path::Path;
 use std::process::Command as TerminalCommand;
 use std::{env::current_dir, path::PathBuf};
 
@@ -69,17 +71,61 @@ struct Profiles {
     release: Vec<String>,
 }
 
-fn find_config() -> Result<Config> {
+fn find_root() -> Result<PathBuf> {
     for path in current_dir()?.ancestors() {
-        let mut path_buf = path.to_path_buf();
-        path_buf.push("chp.toml");
+        let chp_exists = read_dir(path)?.any(|item| {
+            if let Ok(entry) = item {
+                entry.file_name().as_os_str() == "chp.toml"
+            } else {
+                false
+            }
+        });
 
-        if let Ok(content) = read_to_string(&path_buf) {
-            return Ok(toml::from_str(&content)?);
+        if chp_exists {
+            return Ok(path.to_path_buf());
         }
     }
 
-    Err(Report::msg("Could not find chp.toml"))
+    Err(Report::msg("Could not find root (chp.toml not found)"))
+}
+
+fn find_config() -> Result<Config> {
+    let mut chp_path = find_root()?;
+    chp_path.push("chp.toml");
+
+    if let Ok(content) = read_to_string(chp_path) {
+        return Ok(toml::from_str(&content)?);
+    }
+
+    Err(Report::msg("Could not read chp.toml"))
+}
+
+fn find_cpp_files() -> Result<Vec<PathBuf>> {
+    let root = find_root()?;
+    let mut src_path = root.clone();
+    src_path.push("src");
+
+    let mut cpp_files = Vec::new();
+
+    find_cpp_files_helper(&mut cpp_files, &src_path, &root)?;
+
+    Ok(cpp_files)
+}
+
+fn find_cpp_files_helper(cpp_files: &mut Vec<PathBuf>, dir: &Path, root: &Path) -> Result<()> {
+    for entry in read_dir(dir)? {
+        let entry = entry?;
+        let path = entry.path();
+
+        if path.is_dir() {
+            find_cpp_files_helper(cpp_files, &path, root)?;
+        }
+
+        if Some(OsStr::new("cpp")) == path.extension() {
+            cpp_files.push(path.strip_prefix(root)?.to_path_buf());
+        }
+    }
+    Ok(())
 }
 
 fn build(release: bool, maybe_run: bool) -> Result<()> {
@@ -97,7 +143,10 @@ fn build(release: bool, maybe_run: bool) -> Result<()> {
         println!("Building {:?}", &current_dir);
     }
 
-    let output = TerminalCommand::new(config.command).args(args).output()?;
+    let output = TerminalCommand::new(config.command)
+        .args(args)
+        .args(find_cpp_files()?)
+        .output()?;
 
     if !output.stderr.is_empty() {
         std::io::stderr().write_all(&output.stderr)?;
@@ -165,7 +214,8 @@ fn write_project(mut path: PathBuf) -> Result<()> {
     let output = TerminalCommand::new("git")
         .arg("init")
         .current_dir(&path)
-        .output()?;
+        .output()
+        .map_err(|_| Report::msg("Git is not installed"))?;
 
     if !output.stderr.is_empty() {
         std::io::stderr().write_all(&output.stderr)?;
@@ -224,9 +274,9 @@ debug = [
     "-fconcepts", 
     "-Og", 
     "-g", 
-    "src/main.cpp", 
     "-o", 
-    "build/debug/{}.exe"
+    "build/debug/{}.exe",
+    # All `.cpp` files are found automatically by chp inside the `src/` directory
 ]
 release = [
     "-fdiagnostics-color=always",
@@ -238,10 +288,9 @@ release = [
     "-Wsuggest-attribute=const", 
     "-fconcepts", 
     "-O2", 
-    "-g", 
-    "src/main.cpp", 
     "-o", 
-    "build/release/{}.exe"
+    "build/release/{}.exe",
+    # All `.cpp` files are found automatically by chp inside the `src/` directory
 ]
 "#;
 const MAIN_FILE_CONTENT: &str = r#"#include <iostream>
