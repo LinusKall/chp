@@ -163,7 +163,7 @@ fn build(release: bool) -> Result<()> {
 
     if !output.stderr.is_empty() {
         std::io::stderr().write_all(&output.stderr)?;
-        return Ok(());
+        return Err(Report::msg("See the compiler output above"));
     }
 
     Ok(())
