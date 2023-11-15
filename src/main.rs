@@ -275,8 +275,8 @@ const CONFIG_FILE_CONTENT: &str = r#"name = "{}"
 command = "g++"
 
 # chp will recursively look for cpp files in these directories.
-# This variable is optional, *if* you provide the files you want
-# to compile in the debug and release profiles.
+# This variable can be skipped, *if* you provide the files you
+# want to compile in the debug and release profiles.
 compile_cpp_in_dirs = [
     "src"
 ]
