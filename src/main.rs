@@ -66,6 +66,7 @@ fn main() -> Result<()> {
 struct Config {
     name: String,
     command: String,
+    compile_cpp_in_dirs: Option<Vec<String>>,
     profiles: Profiles,
 }
 
@@ -93,7 +94,7 @@ fn find_root() -> Result<PathBuf> {
     Err(Report::msg("Could not find root (chp.toml not found)"))
 }
 
-fn find_config() -> Result<Config> {
+fn read_config() -> Result<Config> {
     let mut chp_path = find_root()?;
     chp_path.push("chp.toml");
 
@@ -104,25 +105,32 @@ fn find_config() -> Result<Config> {
     Err(Report::msg("Could not read chp.toml"))
 }
 
-fn find_cpp_files() -> Result<Vec<PathBuf>> {
+fn find_cpp_files_in_dirs(maybe_dirs: Option<Vec<String>>) -> Result<Vec<PathBuf>> {
     let root = find_root()?;
-    let mut src_path = root.clone();
-    src_path.push("src");
 
     let mut cpp_files = Vec::new();
 
-    find_cpp_files_helper(&mut cpp_files, &src_path, &root)?;
+    for directory in maybe_dirs.unwrap_or_default() {
+        let mut src_path = root.clone();
+        src_path.push(directory);
+
+        find_cpp_files_in_dirs_helper(&mut cpp_files, &src_path, &root)?;
+    }
 
     Ok(cpp_files)
 }
 
-fn find_cpp_files_helper(cpp_files: &mut Vec<PathBuf>, dir: &Path, root: &Path) -> Result<()> {
+fn find_cpp_files_in_dirs_helper(
+    cpp_files: &mut Vec<PathBuf>,
+    dir: &Path,
+    root: &Path,
+) -> Result<()> {
     for entry in read_dir(dir)? {
         let entry = entry?;
         let path = entry.path();
 
         if path.is_dir() {
-            find_cpp_files_helper(cpp_files, &path, root)?;
+            find_cpp_files_in_dirs_helper(cpp_files, &path, root)?;
         }
 
         if Some(OsStr::new("cpp")) == path.extension() {
@@ -134,17 +142,22 @@ fn find_cpp_files_helper(cpp_files: &mut Vec<PathBuf>, dir: &Path, root: &Path) 
 
 fn build(release: bool) -> Result<()> {
     let current_dir = current_dir()?;
-    let config = find_config()?;
+    let Config {
+        command,
+        compile_cpp_in_dirs,
+        profiles,
+        ..
+    } = read_config()?;
     let args = if release {
-        config.profiles.release
+        profiles.release
     } else {
-        config.profiles.debug
+        profiles.debug
     };
 
     println!("Building {:?}", &current_dir);
 
-    let output = TerminalCommand::new(config.command)
-        .args(find_cpp_files()?)
+    let output = TerminalCommand::new(command)
+        .args(find_cpp_files_in_dirs(compile_cpp_in_dirs)?)
         .args(args)
         .output()?;
 
@@ -160,7 +173,7 @@ fn run(release: bool, args: Vec<String>) -> Result<()> {
     build(release)?;
 
     let mut current_dir = current_dir()?;
-    let config = find_config()?;
+    let config = read_config()?;
 
     current_dir.push("build");
     if release {
@@ -261,8 +274,17 @@ fn write_project(mut path: PathBuf) -> Result<()> {
 const CONFIG_FILE_CONTENT: &str = r#"name = "{}"
 command = "g++"
 
+# chp will recursively look for cpp files in these directories.
+# This variable is optional, *if* you provide the files you want
+# to compile in the debug and release profiles.
+compile_cpp_in_dirs = [
+    "src"
+]
+
 [profiles]
 debug = [
+    # All cpp files found in the directories provided in the 
+    # `compile_cpp_in_dirs` list, will be inserted here.
     "-fdiagnostics-color=always",
     "-std=c++20", 
     "-Wall", 
@@ -275,9 +297,10 @@ debug = [
     "-g", 
     "-o", 
     "build/debug/{}.exe",
-    # All `.cpp` files are found automatically by chp inside the `src/` directory
 ]
 release = [
+    # All cpp files found in the directories provided in the 
+    # `compile_cpp_in_dirs` list, will be inserted here.
     "-fdiagnostics-color=always",
     "-std=c++20", 
     "-Wall", 
@@ -289,7 +312,6 @@ release = [
     "-O2", 
     "-o", 
     "build/release/{}.exe",
-    # All `.cpp` files are found automatically by chp inside the `src/` directory
 ]
 "#;
 const MAIN_FILE_CONTENT: &str = r#"#include <iostream>
