@@ -7,6 +7,7 @@ use std::{env::current_dir, path::PathBuf};
 
 use clap::{Parser, Subcommand};
 use color_eyre::eyre::{Report, Result};
+use color_eyre::owo_colors::OwoColorize;
 use serde::Deserialize;
 
 #[derive(Parser, Debug)]
@@ -181,15 +182,22 @@ fn run(release: bool, args: Vec<String>) -> Result<()> {
     } else {
         current_dir.push("debug");
     }
-    current_dir.push(format!("{}.exe", config.name));
+    current_dir.push(format!("{}.exe", &config.name));
 
     println!("Running {:?}", &current_dir);
 
-    let output = TerminalCommand::new(current_dir).args(args).output()?;
+    let exit_status = TerminalCommand::new(current_dir)
+        .args(args)
+        .spawn()?
+        .wait()?;
 
-    std::io::stdout().write_all(&output.stdout)?;
-    std::io::stderr().write_all(&output.stderr)?;
-
+    if !exit_status.success() {
+        let program = &config.name;
+        eprintln!(
+            "{}",
+            format!("Program '{program}' returned {exit_status}").bright_red()
+        );
+    }
     Ok(())
 }
 
